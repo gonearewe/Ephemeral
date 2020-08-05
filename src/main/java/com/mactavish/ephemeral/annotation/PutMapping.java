@@ -3,8 +3,8 @@ package com.mactavish.ephemeral.annotation;
 import java.lang.annotation.*;
 
 @Documented
-@Target(ElementType.TYPE)
+@Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Router {
-    String url() default  "/";
+public @interface PutMapping {
+    String url() default "/";
 }
