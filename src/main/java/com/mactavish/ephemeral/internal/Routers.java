@@ -7,73 +7,120 @@ import org.apache.commons.logging.LogFactory;
 
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Routers {
     private static final Log log = LogFactory.getLog(Bootstrap.class);
-    private static final TrieTree routerTreeRoot = new TrieTree("");
+    private TrieTree<MethodHandlerMap> routerTreeRoot ;
 
-    public Routers(Set<Class<?>> routerClasses) {
-        Map<List<String>, Set<Method>> routerMap = new HashMap<>();
+    public static Routers of(Set<Class<?>> routerClasses) {
+        Map<List<String>, MethodHandlerMap> routerMap = new HashMap<>();
+        // range all http handler methods in all related classes to finish routerMap
         for (Class<?> routerClass : routerClasses) {
-            var routerPatterns = new LinkedList<>();
-            routerPatterns.addAll(Arrays.asList(routerClass.getAnnotation(Router.class).url().split("/")));
-            for (Method method : routerClass.getMethods()) {
-                // this method doesn't have a HttpRequestAnnotation
-                if (Arrays.stream(method.getAnnotations()).noneMatch(a->
-                        com.mactavish.ephemeral.annotation.Method
-                                .isHttpRequestAnnotation(a.getClass()))){
+            for (java.lang.reflect.Method handlerFunc : routerClass.getMethods()) {
+                // base url from class annotation
+                var routerPatterns = new LinkedList<String>();
+                routerPatterns.addAll(Arrays.asList(routerClass.getAnnotation(Router.class).url().split("/")));
+
+                // url from method annotation
+                var requestAnnotation = handlerFunc.getAnnotation(RequestMapping.class);
+                if (requestAnnotation == null) {
                     continue;
                 }
+                routerPatterns.addAll(Arrays.asList(requestAnnotation.url().split("/")));
 
-
+                // record the whole url in the routerMap
+                var url = routerPatterns.stream().filter(String::isBlank).collect(Collectors.toList());
+                if (!routerMap.containsKey(url)) {
+                    routerMap.put(url, new MethodHandlerMap());
+                }
+                for (var httpMethod : requestAnnotation.method()) {
+                    routerMap.get(url).put(httpMethod, handlerFunc);
+                }
             }
         }
+
+        // construct a router trie-tree with routerMap and complete a Routers instance
+        var routers = new Routers();
+        routers.routerTreeRoot=TrieTree.of(routerMap);
+        return routers;
     }
 
-    private Class<? extends A>
+    public void get
 
+    private Routers() {
+    }
+
+    private static class MethodHandlerMap extends HashMap<com.mactavish.ephemeral.annotation.Method, Method> {
+    }
 }
 
-class TrieTree {
+class TrieTree<T> {
     private static final Log log = LogFactory.getLog(Bootstrap.class);
     private final String pattern;
-    private final Set<TrieTree> children = new HashSet<>();
+    private T value;
+    private final Set<TrieTree<T>> children = new HashSet<>();
 
-    TrieTree(String pattern) {
+    static <T> TrieTree<T> of(Map<List<String>, T> treePaths) {
+        var head = new TrieTree<T>("");
+        for (var treePath : treePaths.entrySet()) {
+            var cur = head;
+            for (var iterator= treePath.getKey().iterator(); iterator.hasNext();) {
+                var pattern=iterator.next();
+                var optionalChild = cur.children.stream().filter(child -> child.pattern.equals(pattern)).findAny();
+                if (optionalChild.isPresent()) { // follow the existed tree path
+                    cur = optionalChild.get();
+                }else { // create a new branch
+                    var child=new TrieTree<T>(pattern);
+                    cur.addChild(child);
+                    cur=child;
+                }
+                // reach the path end
+                if(!iterator.hasNext()){
+                    cur.value=treePath.getValue();
+                }
+            }
+        }
+        return head;
+    }
+
+    private TrieTree(String pattern) {
         this.pattern = pattern;
     }
 
-    boolean match(String pattern) {
-        return this.pattern.equals(pattern);
-    }
+    // boolean match(String pattern) {
+    //     return this.pattern.equals(pattern);
+    // }
 
     void addChild(TrieTree node) {
         children.add(node);
     }
 
-    Path matchPath(List<String> realPath) {
-        // reach tree path end
-        if (realPath.size() == 0) {
-            return new Path();
-        }
-
+    Path<T> matchPath(List<String> realPath) {
         // extract part for current tree node
         final String realPathPart = realPath.get(0);
         if (!Path.isVariable(realPathPart) && !Path.isWildcard(realPathPart)) {
             return null; // not a match
         }
 
-        // match children
-        Path path = null;
-        for (TrieTree t : this.children) {
-            var tmp = t.matchPath(realPath.subList(1, realPath.size()));
-            if (tmp == null) {
-                continue;
-            }
-            if (path != null) {
-                log.error("more than one router path found: " + path.getPatterns() + " and " + tmp.getPatterns());
-            } else {
-                path = tmp;
+        Path<T> path = null;
+        // reach tree path end
+        if (this.children.size() == 0 && realPath.size() == 1) { // a match
+            path = new Path<>(this.value);
+        } else if (this.children.size() == 0) { // extra path pattern
+            return null;
+        } else { // not yet reach tree path end
+            // match children
+            for (TrieTree<T> t : this.children) {
+                var tmp = t.matchPath(realPath.subList(1, realPath.size()));
+                if (tmp == null) {
+                    continue;
+                }
+                if (path != null) {
+                    log.error("more than one router path found: " + path.getPatterns() + " and " + tmp.getPatterns());
+                } else {
+                    path = tmp;
+                }
             }
         }
 
@@ -91,9 +138,10 @@ class TrieTree {
     }
 }
 
-class Path {
+class Path<T> {
     private final List<String> patterns = new LinkedList<>();
     private final Map<String, Object> variables = new HashMap<>();
+    private final T value;
 
     static boolean isVariable(String pattern) {
         return pattern != null && pattern.startsWith("$");
@@ -107,6 +155,10 @@ class Path {
         return name.substring(1);
     }
 
+    Path(T value) {
+        this.value = value;
+    }
+
     void addPattern(String pattern) {
         this.patterns.add(0, pattern);
     }
@@ -117,5 +169,9 @@ class Path {
 
     List<String> getPatterns() {
         return this.patterns;
+    }
+
+    public T getValue() {
+        return value;
     }
 }
