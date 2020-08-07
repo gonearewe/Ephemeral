@@ -2,7 +2,7 @@ package com.mactavish.ephemeral;
 
 import com.mactavish.ephemeral.internal.NettyServer;
 import com.mactavish.ephemeral.internal.Routers;
-import io.github.classgraph.AnnotationInfo;
+import com.mactavish.ephemeral.internal.ServerHandler;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
 import org.apache.commons.logging.Log;
@@ -15,9 +15,9 @@ public class Bootstrap {
     private static final Log log = LogFactory.getLog(Bootstrap.class);
     private static final String routerAnnotation = "com.mactavish.ephemeral.annotation.Router";
 
-    public void run(Class<?> bootClass) {
+    public void run(Class<?> bootClass) throws Exception {
         var routers= Routers.of(findRouterClasses(bootClass.getPackageName()));
-        new NettyServer().start();
+        new NettyServer().start(new ServerHandler(routers));
     }
 
     Set<Class<?>> findRouterClasses(String packageName) {

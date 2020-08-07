@@ -1,9 +1,12 @@
 package com.mactavish.ephemeral.internal;
 
 import com.mactavish.ephemeral.Bootstrap;
+import com.mactavish.ephemeral.Request;
+import com.mactavish.ephemeral.Response;
 import com.mactavish.ephemeral.annotation.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -46,7 +49,38 @@ public class Routers {
         return routers;
     }
 
-    public void get
+    public Response route(@NotNull Request req){
+        Path<MethodHandlerMap> path=this.routerTreeRoot.matchPath(Arrays.stream(req.url.split("/")).filter(s->!s.isBlank()).collect(Collectors.toList()));
+        var handlerFunc=path.getValue().get(req.method);
+        var params=handlerFunc.getParameters();
+
+        var args=new Object[params.length];
+        if(params.length<2){
+            log.fatal("not enough params for request handler",new Exception("illegal request handler"));
+            return null;
+        }
+
+        // add variable resolved from RequestMapping's regex url
+        if(params.length>2) {
+            for (int i = 2; i < params.length; i++) {
+                var variable = params[i].getAnnotation(Param.class).value();
+                args[i] = path.resolvevariable(variable);
+            }
+        }
+
+        // fill in http request and an empty response
+        args[0]=req;
+        var response=new  Response();
+        args[1]=response;
+
+        try{
+            handlerFunc.invoke(args);
+        }catch (Exception e){
+            log.fatal("invoke request handler",e);
+        }
+
+        return response;
+    }
 
     private Routers() {
     }
@@ -140,7 +174,7 @@ class TrieTree<T> {
 
 class Path<T> {
     private final List<String> patterns = new LinkedList<>();
-    private final Map<String, Object> variables = new HashMap<>();
+    private final Map<String, String> variables = new HashMap<>();
     private final T value;
 
     static boolean isVariable(String pattern) {
@@ -163,15 +197,19 @@ class Path<T> {
         this.patterns.add(0, pattern);
     }
 
-    void defineVariable(String name, Object value) {
+    void defineVariable(String name, String value) {
         this.variables.put(name, value);
+    }
+
+    String resolvevariable(String name){
+        return this.variables.get(name);
     }
 
     List<String> getPatterns() {
         return this.patterns;
     }
 
-    public T getValue() {
-        return value;
+    T getValue(){
+        return this.value;
     }
 }
