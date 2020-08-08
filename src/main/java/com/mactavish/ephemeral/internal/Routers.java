@@ -6,7 +6,6 @@ import com.mactavish.ephemeral.Response;
 import com.mactavish.ephemeral.annotation.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Method;
 import java.util.*;
@@ -22,8 +21,7 @@ public class Routers {
         for (Class<?> routerClass : routerClasses) {
             for (java.lang.reflect.Method handlerFunc : routerClass.getMethods()) {
                 // base url from class annotation
-                var routerPatterns = new LinkedList<String>();
-                routerPatterns.addAll(Arrays.asList(routerClass.getAnnotation(Router.class).url().split("/")));
+                var routerPatterns = new LinkedList<>(Arrays.asList(routerClass.getAnnotation(Router.class).url().split("/")));
 
                 // url from method annotation
                 var requestAnnotation = handlerFunc.getAnnotation(RequestMapping.class);
@@ -49,7 +47,7 @@ public class Routers {
         return routers;
     }
 
-    public Response route(@NotNull Request req){
+    public Response route(Request req){
         Path<MethodHandlerMap> path=this.routerTreeRoot.matchPath(Arrays.stream(req.url.split("/")).filter(s->!s.isBlank()).collect(Collectors.toList()));
         var handlerFunc=path.getValue().get(req.method);
         var params=handlerFunc.getParameters();
@@ -126,7 +124,7 @@ class TrieTree<T> {
     //     return this.pattern.equals(pattern);
     // }
 
-    void addChild(TrieTree node) {
+    void addChild(TrieTree<T> node) {
         children.add(node);
     }
 

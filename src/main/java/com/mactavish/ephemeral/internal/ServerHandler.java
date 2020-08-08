@@ -13,8 +13,8 @@ public class ServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> 
     }
 
     @Override
-    protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
+    protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
         Response response=this.routers.route(new Request(msg.method(),msg.uri(),msg.headers()));
-        ctx.writeAndFlush(response);
+        response.writeTo(ctx);
     }
 }
